@@ -41,7 +41,7 @@ module monitoring './shared/monitoring.bicep' = {
 module cosmos './shared/cosmosdb.bicep' = {
   name: 'cosmos'
   params: {    
-    databaseName: 'MultiAgentBanking'
+    databaseName: 'MultiAgentZavaRewards'
 	chatsContainerName: 'Chat'
 	accountsContainerName: 'AccountsData'
 	offersContainerName:'OffersData'
@@ -177,7 +177,7 @@ module ChatAPI './app/ChatAPI.bicep' = {
       }
 	  {
         name: 'CosmosDBSettings__Database'
-        value: 'MultiAgentBanking'
+        value: 'MultiAgentZavaRewards'
       }
 	  {
         name: 'CosmosDBSettings__ChatDataContainer'
@@ -188,27 +188,27 @@ module ChatAPI './app/ChatAPI.bicep' = {
         value: 'Users'
       }
       {
-        name: 'BankingCosmosDBSettings__CosmosUri'
+        name: 'RewardsCosmosDBSettings__CosmosUri'
         value: cosmos.outputs.endpoint
       }	
       {
-        name: 'BankingCosmosDBSettings__Database'
-        value: 'MultiAgentBanking'
+        name: 'RewardsCosmosDBSettings__Database'
+        value: 'MultiAgentZavaRewards'
       }
 	  {
-        name: 'BankingCosmosDBSettings__AccountsContainer'
+        name: 'RewardsCosmosDBSettings__AccountsContainer'
         value: 'AccountsData'
       }
 	  {
-        name: 'BankingCosmosDBSettings__UserDataContainer'
+        name: 'RewardsCosmosDBSettings__UserDataContainer'
         value: 'Users'
       }
 	  {
-        name: 'BankingCosmosDBSettings__RequestDataContainer'
+        name: 'RewardsCosmosDBSettings__RequestDataContainer'
         value: 'AccountsData'
       }
 	  {
-        name: 'BankingCosmosDBSettings__OfferDataContainer'
+        name: 'RewardsCosmosDBSettings__OfferDataContainer'
         value: 'OffersData'
       }
       {

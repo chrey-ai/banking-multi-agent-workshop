@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.ERROR)
 load_dotenv(override=False)
 # Azure Cosmos DB configuration
 COSMOS_DB_URL = os.getenv("COSMOSDB_ENDPOINT")
-DATABASE_NAME = "MultiAgentBanking"
+DATABASE_NAME = "MultiAgentZavaRewards"
 
 cosmos_client = None
 database = None
@@ -53,24 +53,33 @@ except Exception as e:
     raise e
 
 
-def vector_search(vectors, accountType):
-    print("accountType: ", accountType)
-    print("vectors: ", vectors)
+def vector_search(vectors, tenantId, region):
+    print("tenantId: ", tenantId)
+    print("region: ", region)
     # Execute the query
-    results = offers_container.query_items(
-        query='''
+    query = '''
         SELECT TOP 10 c.offerId, c.text, c.name
-                        FROM c
-                        WHERE c.type = 'Term'
-                        AND c.accountType = @accountType
-                        AND VectorDistance(c.vector, @referenceVector)> 0.075
-                        ORDER BY VectorDistance(c.vector, @referenceVector) 
-        ''',
-        parameters=[
-            {"name": "@accountType", "value": accountType},
-            {"name": "@referenceVector", "value": vectors}
-        ],
-        enable_cross_partition_query=True, populate_query_metrics=True)
+        FROM c
+        WHERE c.type = 'Term'
+        AND c.tenantId = @tenantId
+        AND VectorDistance(c.vector, @referenceVector) > 0.075
+    '''
+    parameters = [
+        {"name": "@tenantId", "value": tenantId},
+        {"name": "@referenceVector", "value": vectors}
+    ]
+
+    if region:
+        query += " AND ARRAY_CONTAINS(c.region, @region)"
+        parameters.append({"name": "@region", "value": region})
+
+    query += " ORDER BY VectorDistance(c.vector, @referenceVector)"
+    results = offers_container.query_items(
+        query=query,
+        parameters=parameters,
+        enable_cross_partition_query=True,
+        populate_query_metrics=True
+    )
     print("Executed vector search in Azure Cosmos DB... \n")
     print("Results: ", results)
     try:
@@ -120,6 +129,46 @@ def update_users_container(data):
     except Exception as e:
         print(f"[ERROR] Error saving Users data to Cosmos DB: {e}")
         raise e
+
+
+# Lookup helpers
+def fetch_all_users():
+    """Return list of users with id, name and tenantId."""
+    try:
+        query = "SELECT c.id, c.name, c.tenantId FROM c"
+        items = list(users_container.query_items(query=query, enable_cross_partition_query=True))
+        return items
+    except Exception as e:
+        print(f"[ERROR] Error fetching users: {e}")
+        return []
+
+
+def fetch_distinct_tenants():
+    """Return distinct tenantIds from AccountsData container."""
+    try:
+        query = "SELECT DISTINCT VALUE c.tenantId FROM c WHERE IS_DEFINED(c.tenantId)"
+        items = list(account_container.query_items(query=query, enable_cross_partition_query=True))
+        # filter out null/empty
+        tenants = sorted({t for t in items if t})
+        return tenants
+    except Exception as e:
+        print(f"[ERROR] Error fetching tenants: {e}")
+        return []
+
+
+def fetch_user_name(user_id: str) -> str:
+    """Return the friendly display name for a user id, or the id if not found."""
+    try:
+        query = "SELECT c.name FROM c WHERE c.id = @id"
+        parameters = [{"name": "@id", "value": user_id}]
+        items = list(users_container.query_items(query=query, parameters=parameters, enable_cross_partition_query=True))
+        if items:
+            name_val = items[0].get("name")
+            if name_val:
+                return name_val
+    except Exception as e:
+        print(f"[ERROR] Error fetching user name for {user_id}: {e}")
+    return user_id
 
 
 # fetch the user data from the container by tenantId, userId
@@ -223,7 +272,7 @@ def create_service_request_record(account_data):
 
 def fetch_latest_account_number():
     try:
-        query = "SELECT c.accountId FROM c WHERE c.type = 'BankAccount'"
+        query = "SELECT c.accountId FROM c WHERE (c.accountType = 'Personal' OR c.accountType = 'Business')"
         items = list(account_container.query_items(query=query, enable_cross_partition_query=True))
 
         print(f"[DEBUG] Fetched {len(items)} account numbers")
@@ -252,7 +301,8 @@ def fetch_latest_account_number():
 
 def fetch_latest_transaction_number(account_number):
     try:
-        query = f"SELECT c.id FROM c WHERE c.type = 'BankTransaction' AND c.accountId = '{account_number}' ORDER BY c._ts DESC"
+        query = f"SELECT c.id FROM c WHERE c.type = 'RewardsTransaction' " \
+                f"AND c.accountId = '{account_number}' ORDER BY c._ts DESC"
         items = list(account_container.query_items(query=query, enable_cross_partition_query=True))
 
         if items:
@@ -267,10 +317,10 @@ def fetch_latest_transaction_number(account_number):
         print(f"[ERROR] Error fetching latest transaction number: {e}")
         raise e
 
-
+ 
 def fetch_account_by_number(account_number, tenantId, userId):
     try:
-        query = f"SELECT * FROM c WHERE c.type = 'BankAccount' AND c.accountId = '{account_number}' AND c.tenantId = '{tenantId}' AND c.userId = '{userId}'"
+        query = f"SELECT * FROM c WHERE c.accountId = '{account_number}' AND c.tenantId = '{tenantId}' AND c.userId = '{userId}'"
         items = list(account_container.query_items(query=query, enable_cross_partition_query=True))
 
         if items:
@@ -295,7 +345,7 @@ def fetch_transactions_by_date_range(accountId: str, startDate: datetime, endDat
     query = """
     SELECT * FROM c
     WHERE c.accountId = @accountId AND c.transactionDateTime >= @startDate AND c.transactionDateTime <= @endDate
-    AND c.type = "BankTransaction"
+    AND c.type = "RewardsTransaction"
     ORDER BY c.transactionDateTime ASC
     """
     parameters = [

@@ -34,7 +34,7 @@ def delete_session(session_id):
         print(f"Failed to delete session: {response.json()}.")
 
 def main():
-    print("Interactive Agent Shell")
+    print("Interactive Zava Rewards Assistant Shell")
     print("Type 'exit' to end the conversation and DELETE the session.")
 
     session_id = create_session()
